@@ -61,6 +61,38 @@ pytest --durations=10   # 列出执行时间最长的10个测试用例
 
 # Disabling plugins
 pytest -p no:doctest    # disable loading the plugin doctest
-
-
 ```
+
+# The writing and reporting of assertions in tests
+## Asserting with the assert statement
+```
+def f():
+  return 3
+def test_function():
+ assert f() == 4
+ 
+# 重写报错信息
+assert a % 2 ==0, "value was odd, should be even"
+```
+
+## Assertions about expected exceptions
+使用 pytest.raises 作为 context manager
+```
+import ptest
+def test_zero_division():
+  with pytest.raises(ZeroDivisionError):
+    1 / 0
+```
+
+获取异常的具体信息
+```
+# excinfo 是一个 ExceptionInfo 实例，包含实际的异常
+# 属性有：.type, .value, .traceback
+def test_recursion_depth():
+  with pytest.raises(RuntimeError) as excinfo:
+    def f():
+      f()
+    f()
+  assert 'maximum recursion' in str(excinfo.value)
+```
+
