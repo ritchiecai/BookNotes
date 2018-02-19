@@ -2,6 +2,9 @@
 
 支持内建的参数值访问，例如，tmpdir
 
+有用的连接：
+[reporting demo](https://docs.pytest.org/en/latest/example/reportingdemo.html#tbreportdemo)
+
 ## Conventions for Python test discovery
 * 搜索测试目录：testpaths配置项、当前目录、命令行参数
 * 搜索所有的子目录
@@ -95,4 +98,96 @@ def test_recursion_depth():
     f()
   assert 'maximum recursion' in str(excinfo.value)
 ```
+使用match关键字匹配特定的异常值
+```
+import pytest
+def myfunc():
+  raise ValueError("Exception 123 raised")
+def test_match():
+  with pytest.raises(ValueError, match=r'.* 123 .*'):
+    myfunc()
+```
 
+pytest.mark.xfail 可以设置需要捕获的异常
+```
+@pytest.mark.xfail(raises=IndexError)
+def test_f():
+  f()
+```
+**Notice: pytest.raises 使用在测试特定异常，pytest.mark.xfail 使用在记录未修复的bug或特定情况下出现的bug**
+
+## Assertions about expected warnings
+TODO
+
+## Making use of context-sensitive comparisons
+```
+def test_set_comparison():
+  set1 = set("1308")
+  set2 = set("8035")
+  assert set1 == set2
+
+# 执行pytest，报错信息会给出set1有额外的元素1， set2有额外的元素5
+```
+Special comparisons are done for a number of cases:
+* comparing long strings: a context diff is shown
+* comparing long sequences: first failing indices
+* comparing dicts: different entries
+
+## Defining your own assertion comparison
+添加自定义的、更加明确的解释信息
+```
+# content of conftest.py
+from test_foocompare import Foo
+def pytest_assertrepr_compare(op, left, right):
+  if isinstance(left, Foo) and isinstance(right, Foo) and op == "==":
+    return ['Comparing Foo instances:', '    vals: %s != %s' % (left.val, right.val)]
+
+class Foo(object):
+  def __init__(self, val):
+    self.val = val
+  def __eq__(self, other):
+    return self.val == other.val
+
+def test_compare():
+  f1 = Foo(1)
+  f2 = Foo(2)
+  assert f1 == f2
+```
+
+## Advanced assertion introspection
+TODO
+
+# Pytest API and builtin fixtures
+## Helpers for assertions about Exceptions/Warnings
+### raises(expected_exception, *args, **kwargs)
+
+参数：
+* message: if specified, provides a custom failure message if the exception is not raised
+* match: if specified, asserts that the exception matches a text or regex
+
+**当使用 pytest.raises 时，抛出异常语句必须是最后一行；在抛出异常语句之后的代码是不会被执行的。**
+```
+value = 15
+with raises(ValueError) as exc_info:
+  if value > 10:
+    raise ValueError("value must be <= 10")
+  assert exc_info.type == ValueError # this will not execute
+
+# 以下为正确的写法
+with raises(ValueError) as exc_info:
+  if value > 10:
+    raise ValueError("value must be <= 10")
+assert exc_info.type == ValueError
+```
+### deprecated_call(func=None, *args, **kwargs)
+
+用于确保代码段抛出 DeprecationWarning 或 PendingDeprecationWarning
+```
+import warnings
+def api_call_v2():
+  warnings.warn('use v3 of this api', DeprecationWarning)
+  return 200
+  
+with deprecated_call():
+  assert api_call_v2() == 200
+```
