@@ -142,6 +142,7 @@ def pytest_assertrepr_compare(op, left, right):
   if isinstance(left, Foo) and isinstance(right, Foo) and op == "==":
     return ['Comparing Foo instances:', '    vals: %s != %s' % (left.val, right.val)]
 
+# content of test_foocompare.py
 class Foo(object):
   def __init__(self, val):
     self.val = val
@@ -191,3 +192,261 @@ def api_call_v2():
 with deprecated_call():
   assert api_call_v2() == 200
 ```
+
+## Comparing floating point numbers
+### approx(expected, rel=None, abs=None, nan_ok=False)
+TODO
+## Raising a specific test outcome
+通常情况下，可以使用 mark 来达到同样的效果
+
+* fail(msg='', pytrace=True)
+* skip(msg='', **kwargs)
+* importorskip(modname, minversion=None)
+* xfail(reason='')
+* exit(msg)
+
+## Fixtures and requests
+### fixture(scope='function', params=None, autouse=False, ids=None, name=None)
+本身是一个修饰器，用于定义一个fixture function
+
+# pytest fixtures: explicit, modular, scalable
+脚手架(fixture)为每个测试用例提供可靠的、可重复执行的初始化设置
+## Fixtures as Function arguments
+fixture可以作为测试函数的输入参数
+```
+import pytest
+
+# 生成fixture
+@pytest.fixture
+def smtp():
+  import smtplib
+  return smtplib.SMTP("smtp.gmail.com", 587, timeout=5)
+  
+# 作为参数传入，pytest查找并调用由 @pytest.fixture 修饰的smtp函数
+def test_ehlo(smtp):
+  response, msg = smtp.ehlo()
+  assert response == 250
+```
+
+查看可使用的fixture
+```
+pytest --fixtures test_simplefactory.py
+```
+## conftest.py: sharing fixture functions
+如果有多个测试用例需要使用同一个fixture，那么可以将这个fixture放入 conftest.py 文件中。
+不需要使用import，pytest会自动搜索并引入。
+
+fixture的发现机制：
+1. test class
+2. test module
+3. conftest.py
+4. builtin 或 第三方plugin
+
+## Sharing test data
+几种方式：
+1. 使用fixture引入测试数据，这个将使用pytest的自动cache功能
+2. 将测试用数据文件统一放在 tests 目录下，相应的插件有：pytest-datadir 和 pytest-datafiles
+
+## Scope: sharing a fixture instance across tests in a class, module or session
+有些fixture会使用网络连接，例如stmp。这些操作十分耗时。此时，我们可以使用fixture中的scope参数。
+```
+# content of conftest.py
+import pytest
+import smtplib
+
+@pytest.fixture(scope=“module”)
+def smtp():
+  return smtplib.SMTP(“smtp.gmail.com”, 587, timeout=5)
+```
+与conftest.py同一目录下或子目录下的测试用例都可以不用import便能使用smtp
+
+## Fixture finalization / executing teardown code
+当fixture离开它的scope时，pytest支持执行特定代码。
+```
+import smtplib
+import pytest
+
+@pytest.fixture(scope=“module”)
+def smtp():
+  smtp = smtplib.SMTP(“smtp.gmail.com”, 587, timeout=5)
+  yield smtp	# 将原来的return改用yield语句
+  # 以下语句在fixture消亡时执行
+  print(“teardown smtp”)
+  smtp.close()
+
+另外一种方式，使用with语句
+@pytest.fixture(scope=“module”)
+def smtp():
+  with smtplib.SMTP(“smtp.gmail.com”, 587, timeout=5) as smtp:
+    yield smtp
+```
+
+** Note that if an exception happens during the setup code (before the yield keyword), the teardown code (after the yield) will not be called. **
+
+另外一种方式是使用 addfinalizer 方法注册
+```
+@pytest.fixture(scope=“module”)
+def smtp(request):
+  smtp = smtplib.SMTP(“smtp.gmail.com”, 587, timeout=5)
+  def fin():
+    print (“teardown smtp”)
+    smtp.close()
+  request.addfinalizer(fin)
+  return smtp
+```
+
+addfinalizer 相对于yield有2个特征：
+1. 使用注册多个finalizer 函数
+2. 无论在setup时是否出现异常，finalizer函数都会被执行
+
+## Fixtures can introspect the requesting test context
+使用request对象，fixture可以获取测试用例的context
+```
+@pytest.fixture(scope=“module”)
+def smtp(request):
+  # 获取测试用例所在的module中的smtpserver的值
+  server = getattr(request.module, “smtpserver”, “smtp.gmail.com”)
+  smtp = smtplib.SMTP(server, 587, timeout=5)
+  yield smtp
+  print (“finalizing %s (%s)” % (smtp, server))
+  smtp.close()
+```
+
+## Parametrizing fixtures
+使用参数化后的fixture时，测试用例将会被多次执行。此时，测试用例并不感知。
+```
+@pytest.fixture(scope=“module”, params=[“smtp.gmail.com”, “mail.python.org”])
+def smtp(request):
+  smtp = smtplib.SMTP(request.param, 587, timeout=5)
+  yield smtp
+  print (“finalizing %s” % smtp)
+  smtp.close()
+```
+
+pytest会为实际执行的测试用例分配一个id，这个id可以是自动生成，也可以是自定义
+```
+import pytest
+@pytest.fixture(params=[0, 1], ids=[’spam’, ‘ham’])
+def a(request):
+  return request.param
+
+def test_a(a):
+  pass
+
+# 用于生成id的函数
+# fixture_value由fixture在初始化时传入，也就是params中的元素
+def idfn(fixture_value):
+  if fixture_value == 0:
+    return “eggs”
+  else:
+    return None		# 返回None时，pytest将使用自动生成id的方式
+
+@pytest.fixture(params=[0, 1], ids=idfn)
+def b(request):
+  return request.param
+
+def test_b(b):
+  pass
+```
+
+## Modularity: using fixtures from a fixture function
+在定义fixture时，我们可以调用其他fixture
+```
+import pytest
+
+class App(object):
+  def __init__(self, smtp):
+    self.smtp = smtp
+
+@pytest.fixture(scope=“module”)
+def app(smtp):	# smtp 为一个fixture
+  return App(smtp)
+
+def test_smtp_exists(app):
+  assert app.smtp
+```
+
+**需要注意不同fixture的scope**
+
+## Automatic grouping of tests by fixture instances
+fixture的scope决定了fixture实例的生存周期
+scope=function时，每个实例执行完成后就会消亡
+scope=module时，fixture实例只有在多个使用到的测试用例都执行完成后才会消亡
+
+## Using fixtures from classes, modules or projects
+**class级别**
+```
+# content of conftest.py
+import pytest
+import tempfile
+import os
+
+@pytest.fixture()
+def cleandir():
+  newpath = tempfile.mkdtemp()
+  os.chdir(newpath)
+
+# content of test_setenv.py
+import os
+import pytest
+
+# 类中每一个方法都会使用cleandir fixture
+@pytest.mark.usefixtures(“cleandir”)
+class TestDirInit(object):
+  def test_cwd_starts_empty(self):
+    assert os.listdir(os.getcwd()) == []
+    with open(“myfile”, “w”) as f:
+      f.write(“hello”)
+
+  def test_cwd_again_starts_empty(self):
+    assert os.listdir(os.getcwd()) == []
+```
+**module级别**
+```
+pytestmark = pytest.mark.usefixtures(“cleandir”)
+```
+必须命名为 pytestmark
+
+**project级别**
+```
+# content of pytest.ini
+[pytest]
+usefixtures = cleandir
+```
+## Autouse fixtures (xUnit setup on steroids)
+TODO
+同上述的class级别
+
+## Overriding fixtures on various levels
+### Override a fixture on a folder (conftest) level
+### Override a fixture on a test module level
+### Override a fixture with direct test parametrization
+```
+tests/
+  __init__.py
+
+  conftest.py
+    # content of tests/conftest.py
+    import pytest
+    @pytest.fixture
+    def username():
+      return ‘username’
+    @pytest.fixture
+    def other_username(username):
+      return ’other-‘ + username
+
+  test_something.py
+    # content
+    import pytest
+    # 直接覆盖fixture
+    @pytest.mark.parametrize(‘username’, [‘directly-overriden-username’])
+    def test_username(username):
+      assert username == ‘directly-overriden-username’
+
+    # 注意此处，fixture实例的传入参数username
+    @pytest.mark.parametrize(‘username’, [‘directly-overriden-username-other’])
+    def test_username_other(other_username):
+      assert other_username == ‘other-directly-overriden-username-other’
+```
+
+### Override a parametrized fixture with non-parametrized one and vice versa
