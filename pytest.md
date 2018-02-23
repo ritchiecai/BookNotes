@@ -450,3 +450,150 @@ tests/
 ```
 
 ### Override a parametrized fixture with non-parametrized one and vice versa
+
+# Monkeypatching/mocking modules and environments
+用于设置一些全局变量，或是更加复杂的测试环境
+
+## Simple example: monkeypatching functions
+```
+import os.path
+# 一个假设的测试用代码
+def getssh():
+  return os.path.join(os.path.expanduser(“~admin”), ‘.ssh’)
+
+def test_mytest(monkeypatch):
+  def mockreturn(path):
+    return ‘/abc’
+  monkeypatch.setattr(os.path, ‘expanduser’, mockreturn)
+  x = getssh()
+  assert x == ‘/abc/.ssh’
+```
+
+## example: preventing “requests” from remote operations
+```
+# content of conftest.py
+import pytest
+@pytest.fixture(autouse=True)
+def no_requests(monkeypatch):
+  monkeypatch.delattr(“requests.sessions.Session.request”)
+```
+在这里所有试图调用request方法都将返回错误
+**注意：不建议对builtin函数做patch，可能会造成pytest的内部错误。例如open、compile等**
+
+## Method reference of the monkeypatch fixture
+class MonkeyPatch
+方法有：
+* setattr(target, name, value=<notset>, raising=True)
+* delattr(target, name=<notset>, raising=True)
+* setitem(dic, name, value)
+* delitem(dic, name, raising=True)
+* setenv(name, value, prepend=None)
+* delenv(name, raising=True)
+* syspath_prepend(path)
+* chdir(path)
+* undo()
+
+# Temporary directories and files
+## The ‘tmpdir’ fixture
+tmpdir fixture 是一个py.path.local对象
+```
+# content of test_tmpdir.py
+import os
+def test_create_file(tmpdir):
+  p = tmpdir.mkdir(“sub”).join(“hello.txt”)
+  p.write(“content”)
+  assert p.read() == “content”
+  assert len(tmpdir.listdir()) == 1
+  assert 0
+```
+
+## The ‘tmpdir_factory’ fixture
+tmpdir_factory 是一个 session-scoped fixture。可以用于需要多次使用的情况，节省时间花销。
+```
+# contents of conftest.py
+import pytest
+
+@pytest.fixture(scope=‘session’)
+def image_file(tmpdir_factory):
+  img = compute_expensive_image()
+  fn = tmpdir_factory.mktemp(‘data’).join(‘img.png’)
+  img.save(str(fn))
+  return fn
+
+# contents of test_image.py
+def test_histogram(image_file):
+  img = load_image(image_file)
+  # compute and test histogram
+```
+包含的方法：
+
+* TempdirFactory.mktemp(basename, numbered=True) create a subdirectory of the base temporary directory and return it.
+* TempdirFactory.getbasetemp() return base temporary directory
+
+## The default base temporary directory
+默认情况下，临时目录创建在系统的临时目录下。命名如 pytest-NUM
+
+可设置临时目录
+```
+pytest —basetemp=mydir
+```
+
+# Capturing of the stdout/stderr output
+## Default stdout/stderr/stdin capturing behaviour
+在测试执行中，任何在stdout、stderr上的输出都会被捕获。并会被记录在traceback中。
+
+另外，stdin被设置为null对象，在运行自动测试时不能进行交互式输入
+
+## Setting capturing methods or disabling capturing
+有2种方式：
+
+* file descriptor (FD) level capturing (default): All writes going to the operating system file descriptors 1 and 2 will be captured.
+* sys level capturing: Only writes to Python files sys.stdout and sys.stderr will be captured. No capturing of writes to filedescriptors is performed.
+
+```
+pytest -s			# disable all capturing
+pytest —capture=sys	# replace sys.stdout/stderr with in-mem files
+pytest —capture=fd	# also point filedescriptors 1 and 2 to temp files
+```
+
+## Using print statements for debugging
+获取stdout/stderr的一个主要目的是用于debug
+
+## Accessing captured output from a test function
+使用到的fixture：capsys, capsysbinary, capfd, capfdbinary
+
+```
+def test_myoutput(capsys):
+  print(“hello”)
+  sys.stderr.write(“world\n”)
+  captured = capsys.readouterr()
+  assert captured.out == “hello\n”
+  assert captured.err == “world\n”
+  print(“next”)
+  captured = capsys.readouterr()
+  assert captured.out == “next\n”
+```
+
+# Warnings Capture
+TODO
+
+# Doctest integration for modules and test files
+TODO
+
+# Marking test functions with attributes
+使用 pytest.mark helper 可以为测试用例设置相关属性
+
+内建的marker有
+
+* skip		- always skip a test function
+* skipif		- 在某条件下跳过测试用例
+* xfail		- produce an “expected failure” outcome if a certain condition is met
+* parametrize	- 执行多次调用为同一个测试用例
+
+## API reference for mark related objects
+TODO
+
+# Skip and xfail: dealing with tests that cannot succeed
+对于意料中的无法通过的测试用例，我们标记这些测试用例，这样pytest会过滤这些测试用例并在小结中展示出来。同时测试结果通过。
+
+
