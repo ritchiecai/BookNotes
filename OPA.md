@@ -89,106 +89,246 @@ allow {
 Rego 受 [Datalog](https://en.wikipedia.org/wiki/Datalog) 启发，对其进行了扩展支持结构化的文档模式例如JSON。
 
 ### 3.1 基础知识
+```
+pi = 3.14159
+> pi
+3.14159
 
+rect = {"width": 2, "height": 4}
+> rect
+{
+    "height": 4,
+    "width": 2
+}
 
-Composite 
-cube = { "width": 3, "height": 4, "depth": 5}
+# 表达式：rule-name IS value IF body
+# if the value is omitted, it defaults to true
+v {"hello" = "world"}
+# check if it is equal to true:
+> v = true
+false
 
-Variables
-    They appear in both the head and body of rules.
-    Variables appearing in the head of a rule can be thought of as input and output of the rule. They are simultaneously an input and an output.
-    If a query supplies a value for a variable, that variable is an input, and if the query does not supply a value for a variable, that variable is an output.
-sites = [
-    {"name": "prod"},
-    {"name": "smoke1"},
-    {"name": "dev"}
-]
+t {x = 42; y = 41; x > y}
+# 等价于
+t {
+    x = 42
+    y = 41
+    x > y
+}
+# 等价于
+t {
+    x > y
+    x = 41
+    y = 42
+}
 
-q[name] { sites[i].name = name }
-
->q[x]
-+----------+
-| x |
-+----------+
-| "prod" |
-| "smoke1" |
-| "dev" |
-+----------+
-
-> q["smoke2"]
-undefined
-> q["dev"]
+# references
+sites = [{"name": "prod"}, {"name": "smoke1"}, {"name": "dev"}]
+r { sites[i].name = "prod"}
+> r
 true
 
-Variable Keys
-    References can include variables as keys. References written this way are used to select a value from every element in a collection.
+# 定义一个set document
+q[name] { sites[i].name = name }
+> q[x]
++----------+
+|    x     |
++----------+
+| "prod"   |
+| "smoke1" |
+| "dev"    |
++----------+
+
+p { q["prod"] }
+> p
+true
+> q["smoke2"]
+undefined
+```
+
+### 3.2 Scalar Values
+可以是字符串、数字、布尔值、null
+```
+greeting = "hello"
+max_height = 42
+pi = 3.14159
+allowed = true
+sentinel = null
+```
+
+### 3.3 Strings
+支持2种方式：
+1. 使用双引号，需要转义
+2. 使用反引号 ` , 无视转义符，适用于正则表达式。称之为 raw string。
+
+### 3.4 Composite Values
+用于定义collections
+```
+cube = {"width": 3, "height": 4, "depth": 5}
+
+a = 42; b = false; c = null; d = {"a": a, "x": [b,c]}
+```
+
+#### 3.4.1 Sets
+```
+s = {cube.width, cube.height, cube.depth}
+
+# 空set 的定义方法
+set()
+```
+
+### 3.5 Variables
+出现在规则(rule)的head和body部分。
+
+* 如果出现在head，variable可被同时当作输入和输出。如果已赋予值，那么被用作输入，如果没有赋予值，那么用作输出。
+
+### 3.6 References
+Reference用于访问嵌套document。
+
+```
+> sites[0].servers[1].hostname
+"helium"
+> sites[0]["servers"][1]["hostname"]
+"helium"
+```
+
+以下4种情况必须使用方括号
+1. string key包含了非字母、数字 或 _
+2. 非string key，例如是数字、null、布尔值
+3. variable key
+4. composite key 
+
+#### 3.6.1 Variable Keys
+用于遍历collection中的每一个元素。
+
+```
 > sites[i].servers[j].hostname
 +---+---+------------------------------+
 | i | j | sites[i].servers[j].hostname |
 +---+---+------------------------------+
-| 0 | 0 | "hydrogen" |
-| 0 | 1 | "helium" |
-| 0 | 2 | "lithium" |
-| 1 | 0 | "beryllium" |
-| 1 | 1 | "boron" |
-| 1 | 2 | "carbon" |
-| 2 | 0 | "nitrogen" |
-| 2 | 1 | "oxygen" |
+| 0 | 0 | "hydrogen"                   |
+| 0 | 1 | "helium"                     |
+| 0 | 2 | "lithium"                    |
+| 1 | 0 | "beryllium"                  |
+| 1 | 1 | "boron"                      |
+| 1 | 2 | "carbon"                     |
+| 2 | 0 | "nitrogen"                   |
+| 2 | 1 | "oxygen"                     |
 +---+---+------------------------------+
 
+# 如果i、j在后续的代码中不会被使用到，可以使用 _
 > sites[_].servers[_].hostname
 +------------------------------+
 | sites[_].servers[_].hostname |
 +------------------------------+
-| "hydrogen" |
-| "helium" |
-| "lithium" |
-| "beryllium" |
-| "boron" |
-| "carbon" |
-| "nitrogen" |
-| "oxygen" |
+| "hydrogen"                   |
+| "helium"                     |
+| "lithium"                    |
+| "beryllium"                  |
+| "boron"                      |
+| "carbon"                     |
+| "nitrogen"                   |
+| "oxygen"                     |
 +------------------------------+
+```
 
-Composite Keys
-    References can include Composite Values as keys if the key is being used to refer into a set. Composite keys may not be used in refs for base data documents, they are only valid for references into virtual documents.
-> s = {[1, 2], [1, 4], [2, 6]}
-> s[[1, 2]]
+#### 3.6.2 Composite Keys
+Composite key 只适用于virtual document，并不适用base data documents。
+
+一般使用场景，
+* 检查collection中是否有这个key
+* 按照某种模式提取出对应的值
+
+```
+> s = {[1,2],[1,4],[2,6]}
+> s[[1,2]]
 [
-1,
-2
+    1,
+    2
 ]
-> s[[1, x]]
+
+> s[[1,x]]
 +---+
 | x |
 +---+
 | 2 |
 | 4 |
 +---+
+```
 
-Multiple Expresssions
-    
+#### 3.6.3 Multiple Expressions
+```
 apps_and_hostnames[[name, hostname]] {
     apps[i].name = name
     apps[i].servers[_] = server
     sites[j].servers[k].name = server
     sites[j].servers[k].hostname = hostname
 }
+```
+2点说明：
+* 一个variable出现在多个地方，OPA只会将该variable赋予同一个值。
+* 上述的rule，join了apps和sites。所有的join 在Rego中隐式的。
 
-> apps_and_hostnames[x]
-+----------------------+
-| x |
-+----------------------+
-| ["web","hydrogen"] |
-| ["web","helium"] |
-| ["web","beryllium"] |
-| ["web","boron"] |
-| ["web","nitrogen"] |
-| ["mysql","lithium"] |
-| ["mysql","carbon"] |
-| ["mongodb","oxygen"] |
-+----------------------+
+#### 3.6.4 Self-Joins
+Using a different key on the same array or object provides the equivalent of self-join in SQL.
 
-Comprehensions
-    Comprehensions provide a concise way of building Composite Values from sub-queries.
-    由 head 和 body 两部分组成。
+### 3.7 Comprehensions
+Comprehension 提供了一个准确的方法用于从query构建一个Composite Values。
+
+和rule一样，comprehension也分为head和body。
+* body，和rule的body一样，其中的表达式都必须为true
+* body中的表达式可以引用外部声明的variable
+
+```
+> region = "west"; names = [name | sites[i].region = region; sites[i].name = name]
++-----------------+--------+
+|      names      | region |
++-----------------+--------+
+| ["smoke","dev"] | "west" |
++-----------------+--------+
+```
+
+#### 3.7.1 Array Comprehensions
+用于构建array values，形式如
+```
+[ <term> | <body>]
+
+#
+hostnames = [hostname | name = app.servers[_]
+                        sites[_].servers[_] = s
+                        s.name = name
+                        hostname = s.hostname]
+```
+
+#### 3.7.2 Object Comprehensions
+用于构建object values
+```
+{ <key>: <term> | <body>}
+
+#
+app_to_hostnames = {app.name: hostnames |
+    apps[_] = app
+    hostnames = [hostname |
+                    name = app.servers[_]
+                    sites[_].servers[_] = s
+                    s.name = name
+                    hostname = s.hostname]
+}
+```
+
+#### 3.7.3 Set Comprehensions
+用于构建set values
+```
+{ <term> | <body>}
+
+#
+> a = [1,2,3,4,3,4,3,4,5]
+> b = {x | x = a[_]}
+> b
+[1,2,3,4,5]
+```
+
+### 3.8 Rules
+Rules 用于定义virtual documents的内容。
+
+#### 3.8.1 Generating Sets
