@@ -1,14 +1,94 @@
 # OPA
 https://www.openpolicyagent.org
 
-## 介绍
+## 1. 介绍
 * 支持动态创建、更新策略；
 * 已接入的服务，可以在不变更程序的前提下，使用最新的策略；
 * OPA是一个轻量级的、通用的策略引擎，支持的集成方式有：sidecar、host-level daemon和library；
 * 
 
-## 如何工作
+## 2. 如何工作
+![基本流程图](https://www.openpolicyagent.org/docs/images/request-response.svg)
 
+目前OPA不支持策略更新时通知到关注的服务或用户。
+
+### 2.1 Data 和 Policies
+在OPA中，主体数据称之为document，类似于JSON字符串。可以通过OPA的RESTful接口进行增删改。
+![内部组织方式](https://www.openpolicyagent.org/docs/images/data-model-dependencies.svg)
+![data](https://www.openpolicyagent.org/docs/images/data-model-logical.svg)
+
+#### 2.1.1 Base Documents
+用于保存：
+
+1. 服务相关：现有状态、服务机器ip列表等
+2. 用户相关：部署信息、现有状态等
+
+使用OPA的Data API进行管理。
+
+#### 2.1.2 Policies
+使用OPA的Rego语言进行编写，定义了一组规则。
+使用OPA的Policy API进行管理。
+
+#### 2.1.3 Rules 和 Virtual Documents
+Virtual Documents 是policy中规则(rule)的计算结果， 当base document或policy发生更新时，virtual document会被及时计算更新。
+Rules allow policy authors to write questions with yes-no answers (that is, predicates) and to generate structured values from raw data found in base documents as well as from intermediate data found in other virtual documents.
+
+#### 2.1.4 The data Document
+OPA中所有用户创建的、计算得到的document都嵌套在OPA内建的名为data的document。
+一个 data document例子：
+```
+{
+    "servers": [...],
+    "ports": [...],
+    "networks": [...],
+    "opa": {
+        "examples": {
+            "violations": [...],
+            "public_severs": [...]
+        }
+    }
+}
+```
+
+data document下的任何document都可以从根节点开始被访问到，例如
+```
+import data.servers
+import data.opa.examples.violations
+```
+也可以通过URI访问：
+```
+GET https://example.com/v1/data/servers HTTP/1.1
+GET https://example.com/v1/data/opa/examples/violations HTTP/1.1
+```
+#### 2.1.5 The input Document
+在某些情况下，policy需要有输入参数。OPA使用内建的名为input的document，在调用OPA的query接口时，使用设置input document中的值。
+```
+{
+    "method": "GET",
+    "path": "/servers/s2",
+    "user": "alice"
+}
+```
+
+同样，我们可以方便的访问input document中的值：
+```
+# let 'bob' perform read-only operations
+allow {
+    input.user = "bob"
+    input.method = "GET"
+}
+
+# let 'alice' perform any operation
+allow {
+    input.user = "alice"
+}
+```
+
+## 3. 如何写policy
+使用Rego，原生查询语言(native query language)
+Rego 受 [Datalog](https://en.wikipedia.org/wiki/Datalog) 启发，对其进行了扩展支持结构化的文档模式例如JSON。
+
+### 3.1 基础知识
 
 
 Composite 
