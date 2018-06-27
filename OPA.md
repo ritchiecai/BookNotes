@@ -437,6 +437,115 @@ y = 8
 ```
 prod_servers[name] {
     sites[_] = site
-    
+    site.name = "prod"
+    site.servers[_].name = name
 }
+apps_in_prod[name] {
+    apps[_] = app
+    app.servers[_] = server
+    app.name = name
+    prod_servers[server]
+}
+apps_not_in_prod[name] {
+    apps[_].name = name
+    not apps_in_prod[name]
+}
+```
+
+### 3.11 Modules
+policy都是在module中定义，包含以下内部：
+* 一个 package 声明
+* 0 或多个 import 语句
+* 0 或多个 rule 定义
+
+#### 3.11.1 Comments
+使用 # 
+
+#### 3.11.2 Packages
+* package 将不同的module合在一个namespace下
+* 同一package下的module不需要在同一个目录下
+* module中的rule是自动export的，就是说可以使用 OPA Data API查询
+
+#### 3.11.3 Imports
+用于引入package外的documents
+```
+package opa.examples
+
+import data.servers as my_servers
+```
+
+### 3.12 With Keyword
+用于指定 the input document 下特定key的值。可能的使用场景，测试用。
+```
+package opa.examples
+import input.user
+import input.method
+
+allow { user = "alice" }
+allow { 
+    user = "bob"
+    method = "GET"
+}
+
+> import data.opa.examples.allow
+> allow with input as {"user": "alice", "method": "POST"}
+true
+> not allow with input as {"user":"bob","method":"DELETE"}
+true
+
+# 一个表达式可以有多个with语句
+<expr> with <target-1> as <value-1> [with <target-2> as <value-2> [...]]
+
+<value>的类型是 Scalar values, Variables, Composite Values, 不能包含 reference 或 comprehension
+```
+
+### 3.13 Default Keyword
+```
+default <name>  = <term>
+
+<term>: scalar, composite, comprehension, 不能为 variable, reference.
+```
+
+### 3.14 Else Keyword
+对于策略顺序敏感的使用场景（例如，iptables），else 关键字就十分有用。
+```
+authorize = "allow" {
+    input.user = "superuser"
+} else = "deny" {
+    input.path[0] = "admin"
+    input.source_nework = "external"
+}
+```
+
+### 3.15 Operators
+#### 3.15.1 Equality
+=
+
+用于定义表达式断言2个值相等。
+
+* 如果操作数包含variable，那么当只有一个variable是未绑定的(unbound)，那么表达式为true
+* 如果操作数都是未绑定，那么表达式使用操作数的引用值对比较是否相同
+* 在遇到未绑定的variable时，OPA会尝试给该variable做绑定。负面影响是，影响后续的表达式。
+
+#### 3.15.2 Assignment
+:= 用于定义本地variable
+
+* 不同于 = ，对于使用 := 定义的variable必须要在比较表达式之前
+
+#### 3.15.3 Comparison
+```
+a == b
+a != b
+a < b
+a <= b
+a > b
+a >= b
+```
+
+不同于equality表达式，这些操作符不做绑定操作，所以这里出现的操作数必须要绑定。
+
+### 3.16 Built-in Functions
+```
+# OPA 内置函数，形如
+<name>(<arg-1>, <arg-2>, ..., <arg-n>)
 ```
