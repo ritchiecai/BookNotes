@@ -101,7 +101,7 @@ rect = {"width": 2, "height": 4}
     "width": 2
 }
 
-# 表达式：rule-name IS value IF body
+# rule/表达式??：rule-name IS value IF body
 # if the value is omitted, it defaults to true
 v {"hello" = "world"}
 # check if it is equal to true:
@@ -429,4 +429,14 @@ y = 8
 * 如果调用的函数未定义，那么结果为undefined，相应的，包含该语句的query被判定为不满足
 
 ### 3.10 Negation
+有时，我们需要表达不应该存在某一状态，这时就需要用到 negation
 
+* For safety, a variable appearing in a negated expression must also appear in another non-negated equality expression in the rule. ？？
+
+* 一般用在判断在一个collection中不包含某一个值
+```
+prod_servers[name] {
+    sites[_] = site
+    
+}
+```
