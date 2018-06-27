@@ -377,3 +377,56 @@ instances[instance] {
 ```
 
 #### 3.8.4 Complete Definitions
+* 一般情况下，对于常量使用完整定义的方式。
+* 使用完整定义创建的document，只能有一个值，如果出现多值，OPA会报错。
+```
+>max_memory = 32 
+>max_memory = 4
+max_memory: eval_conflict_error
+```
+
+### 3.9 Functions
+* OPA支持用户自定义函数，可以访问 the data document 和 the input document
+* 函数可以有任意多个输入，但只能有一个输出。
+```
+trim_and_split(s) = x {
+    trim(s, " ", t)
+    split(t, ".", x)
+}
+> trim_and_split("     foo.bar  ", out)
++---------------+
+|      out      |
++---------------+
+| ["foo","bar"] |
++---------------+
+```
+* 如果想要有多个输出，可以将输出定义为一个array、object或set
+* 如果没有定义输出变量，那么默认输出值为true
+```
+# 以下2个函数等价
+f(x) {
+    x = "foo"
+}
+f(x) = true {
+    x = "foo"
+}
+```
+* 函数可以被多次定义，类似于重载，OPA可以选择一个函数定义进行执行
+```
+p(1, x) = y {
+    y = x
+}
+
+p(2, x) = y {
+    y = x*4
+}
+
+> p(1,2,y)
+y = 2
+> p(2,2,y)
+y = 8
+```
+* 如果调用的函数未定义，那么结果为undefined，相应的，包含该语句的query被判定为不满足
+
+### 3.10 Negation
+
