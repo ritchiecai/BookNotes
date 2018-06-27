@@ -258,6 +258,7 @@ Composite key 只适用于virtual document，并不适用base data documents。
 
 #### 3.6.3 Multiple Expressions
 ```
+# 使用花括号
 apps_and_hostnames[[name, hostname]] {
     apps[i].name = name
     apps[i].servers[_] = server
@@ -330,5 +331,49 @@ app_to_hostnames = {app.name: hostnames |
 
 ### 3.8 Rules
 Rules 用于定义virtual documents的内容。
+```
+<name> <key>? <value>? <body>?
+```
 
 #### 3.8.1 Generating Sets
+```
+hostnames[name] { sites[_].servers[_].hostname = name }
+```
+
+#### 3.8.2 Generating Objects
+```
+apps_by_hostname[hostname] = app {
+    sites[_].servers[_] = server
+    server.hostname = hostname
+    apps[i].servers[_] = server.name
+    apps[i].name = app
+}
+```
+唯一和 generating sets 不同的地方是：增加了 value 即 app
+
+#### 3.8.3 Incremental Definitions
+一个规则可以被多次定义，在OPA中，多次定义一个规则时，采用的是增量处理方式，即最终生成的documents是多个定义的联合。
+
+可以理解为 <rule-1> OR <rule-2> OR ... OR <rule-N>
+
+```
+instances[instance] {
+    sites[_].servers[_] = server
+    instance = {"address": server.hostname, "name": server.name}
+}
+instances[instance] {
+    containers[_] = container
+    instance = {"address": container.ipaddress, "name": container.name}
+}
+
+## 另外一种写法，直接将body部分合在一起
+instances[instance] {
+    sites[_].servers[_] = server
+    instance = {"address": server.hostname, "name": server.name}
+} {
+    containers[_] = container
+    instance = {"address": container.ipaddress, "name": container.name}
+}
+```
+
+#### 3.8.4 Complete Definitions
