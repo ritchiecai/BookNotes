@@ -354,7 +354,7 @@ apps_by_hostname[hostname] = app {
 #### 3.8.3 Incremental Definitions
 一个规则可以被多次定义，在OPA中，多次定义一个规则时，采用的是增量处理方式，即最终生成的documents是多个定义的联合。
 
-可以理解为 <rule-1> OR <rule-2> OR ... OR <rule-N>
+`可以理解为 <rule-1> OR <rule-2> OR ... OR <rule-N>`
 
 ```
 instances[instance] {
@@ -549,3 +549,147 @@ a >= b
 # OPA 内置函数，形如
 <name>(<arg-1>, <arg-2>, ..., <arg-n>)
 ```
+
+## 4. REST API
+### 4.1 Policy API
+```
+# list policies
+GET /v1/policies
+
+# get a policy
+GET /v1/policy/<id>
+
+# create or update a policy
+PUT /v1/policy/<id>
+Content-Type: text/plain
+
+# delete a policy
+DELETE /v1/policies/<id>
+```
+
+### 4.2 Data API
+```
+# get a document
+GET /v1/data/{path:.+}
+可以附带的参数：
+input
+pretty
+explain
+metrics
+instrument
+watch
+
+# get a document (with Input)
+POST /v1/data/{path:.+}
+Content-Type: application/json
+
+{
+    "input": ...
+}
+
+# create or overwrite a document
+PUT /v1/data/{path:.+}
+Content-Type: application/json
+
+如果设置了 If-None-Match: *，那么OPA将不会对已存在的document做overwrite操作
+
+# Patch a document
+PATCH /v1/data/{path:.+}
+Content-Type: application/json-patch+json
+
+[JSON Patch - RFC 6902](https://tools.ietf.org/html/rfc6902)
+# 一个例子
+[
+    {
+        "op": "add",
+        "path": "-",
+        "value": {
+            "id": "s5",
+            "name": "job",
+            "protocols": ["amqp"],
+            "ports": ["p3"]
+        }
+    }
+]
+
+# delete a document
+DELETE /v1/data/{path:.+}
+```
+
+### 4.3 Query API
+```
+# Execute a simple query
+POST /
+Content-Type: application/json
+
+对于没有URL路径的query，OPA将在路径 /data/system/main 下查找document
+PUT /v1/policies/example1 HTTP/1.1
+Content-Type: text/plain
+
+package system
+main = msg {
+    sprintf("hello, %v", input.user, msg)
+}
+
+POST / 
+Content-Type: application/json
+
+{
+    "user": ["alice"]
+}
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+"hello, alice"
+
+```
+```
+# Execute an Ad-hoc query
+```
+
+### 4.4 Authentication
+#### 4.4.1 Bearer Tokens
+```
+GET /v1/data/exempli-gratia HTTP/1.1
+Authorization: Bearer my-secret-token
+```
+
+### 4.5 Errors
+
+### 4.6 Explanations
+以下API支持：
+* Data API GET
+* Query API
+
+### 4.7 Trace Events
+When the explain query parameter is set to full , the response contains an array of Trace Event objects.
+
+### 4.8 Performance Metrics
+在请求中设置 `metrics=true`，以下API支持：
+* Data API(GET and POST)
+* Policy API(all methods)
+* Query API(all methods)
+
+```
+POST /v1/data/example?metrics=true HTTP/1.1
+```
+
+### 4.9 Watches
+OPA支持为一个query设置watch，当结果有更新时触发。
+
+* 启用watch时，链接保持，使用 HTTP Chunked Encoding 格式
+* 多次更新可能只会被返回一次。
+* JSON string
+```
+{
+    "result": <result>,
+    "error": <error>,
+    "metrics": <metrics>,
+    "explanation": <explanation>
+}
+```
+
+## 5 Deployments
+### 5.1 Docker
+
+## Bundles
